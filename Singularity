@@ -2,8 +2,8 @@ From:nfcore/base
 Bootstrap:docker
 
 %labels
-    MAINTAINER **username** <**usermail**>
-    DESCRIPTION Container image containing all requirements for **name of the pipeline**
+    MAINTAINER **nalcala** <**alcalan@iarc.who.int**>
+    DESCRIPTION Container image containing all requirements for RNAsplicing-nf
     VERSION 1.0
 
 %files

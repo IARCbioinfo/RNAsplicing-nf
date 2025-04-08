@@ -1,6 +1,7 @@
-name: template-nf
+name: RNAsplicing-nf
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - samtools=1.8
+  - salmon
+  - trimgalore

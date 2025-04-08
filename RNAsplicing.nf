@@ -16,8 +16,20 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 params.help         = null
-params.mem_QC       = 2
+
+params.input_folder = null
+params.input_file   = null
+
+params.cpu          = 4
 params.cpu_trim     = 15
+params.mem          = 50
+params.mem_QC       = 2
+params.fastq_ext    = "fq.gz"
+params.suffix1      = "_1"
+params.suffix2      = "_2"
+params.output_folder= "."
+params.index          = "ref.ind"
+
 
 log.info ""
 log.info "--------------------------------------------------------"
@@ -38,19 +50,32 @@ if (params.help) {
     log.info "nextflow run iarcbioinfo/RNAsplicing-nf [-with-docker] [OPTIONS]"
     log.info ""
     log.info "Mandatory arguments:"
-    log.info "--<OPTION>                      <TYPE>                      <DESCRIPTION>"
+    log.info '--input_folder   FOLDER                 Folder containing fastq files to be aligned.'
+    log.info '--input_file     STRING                 Input file (tab-separated values) with 4 columns: SM (sample name), RG (read group), pair1 (first fastq pair file), and pair2 (second fastq pair file)'
+    log.info '    --index            FILE                   Reference fasta file (with index) for splice junction trimming and base recalibration.'
     log.info ""
     log.info "Optional arguments:"
+    log.info '--output_folder                   STRING                 Output folder (default: .).'
+    log.info '--cpu                             INTEGER                Number of cpu used by bwa mem and sambamba (default: 4).'
+    log.info '--mem                             INTEGER                Size of memory used for mapping (in GB) (default: 50).'
+    log.info '--fastq_ext                       STRING                 Extension of fastq files (default : fq.gz)'
+    log.info '--suffix1                         STRING                 Suffix of fastq files 1 (default : _1)'
+    log.info '--suffix2                         STRING                 Suffix of fastq files 2 (default : _2)'
     log.info '--mem_QC                         INTEGER                    Size of memory used for QC and cutadapt (in GB) (default: 2).'
     log.info '--cpu_trim                       INTEGER                    Number of cpu used by cutadapt (default: 15).'
-    log.info ""
-    log.info "Flags:"
-    log.info "--<FLAG>                                                    <DESCRIPTION>"
     log.info ""
     exit 0
 } else {
 /* Software information */
 log.info "help:                               ${params.help}"
+log.info "input_folder   = ${params.input_folder}"
+log.info "input_file     = ${params.input_file}"
+log.info "index          = ${params.index}"
+log.info "fastq_ext      = ${params.fastq_ext}"
+log.info "suffix1        = ${params.suffix1}"
+log.info "suffix2        = ${params.suffix2}"
+log.info "output_folder  = ${params.output_folder}"
+log.info "cpu            = ${params.cpu}"
 log.info "mem_QC         = ${params.mem_QC}"
 log.info "cpu_trim       = ${params.cpu_trim}"
 }

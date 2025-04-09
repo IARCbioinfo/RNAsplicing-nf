@@ -23,3 +23,5 @@ COPY environment.yml /
 #RUN conda env create -n rnaseq-nf -f /environment.yml && conda clean -a
 #ENV PATH /opt/conda/envs/rnaseq-nf/bin:$PATH
 RUN conda env update -n root -f /environment.yml && conda clean -a
+RUN cd /
+RUN git clone https://github.com/comprna/SUPPA

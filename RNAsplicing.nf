@@ -19,17 +19,20 @@ params.help         = null
 
 params.input_folder = null
 params.input_file   = null
+params.output_file   = "RNAsplicing-nf_output"
 
 params.cpu          = 4
 params.cpu_trim     = 15
-params.mem          = 50
+params.mem          = 10
 params.mem_QC       = 2
 params.fastq_ext    = "fq.gz"
 params.suffix1      = "_1"
 params.suffix2      = "_2"
 params.output_folder= "."
 params.index          = "ref.ind"
-
+params.suppa_folder = "SUPPA"
+params.ioe = null
+params.gtf = null
 
 log.info ""
 log.info "--------------------------------------------------------"
@@ -52,7 +55,7 @@ if (params.help) {
     log.info "Mandatory arguments:"
     log.info '--input_folder   FOLDER                 Folder containing fastq files to be aligned.'
     log.info '--input_file     STRING                 Input file (tab-separated values) with 4 columns: SM (sample name), RG (read group), pair1 (first fastq pair file), and pair2 (second fastq pair file)'
-    log.info '    --index            FILE                   Reference fasta file (with index) for splice junction trimming and base recalibration.'
+    log.info '--index            FILE                   Reference fasta file (with index) for splice junction trimming and base recalibration.'
     log.info ""
     log.info "Optional arguments:"
     log.info '--output_folder                   STRING                 Output folder (default: .).'
@@ -100,7 +103,7 @@ process trim{
 	    cpu_tg = params.cpu_trim -1
 	    cpu_tg2 = cpu_tg.div(3.5)
 	    cpu_tg3 = Math.round(Math.ceil(cpu_tg2))
-        if(suffix2){
+        if(params.suffix2){
             pairs="${pair1} ${pair2}"
             opts="--paired "
         }else{
@@ -119,53 +122,136 @@ process trim{
 process quant{
     cpus params.cpu
     memory params.mem+'GB'
-    tag {ID}
+    tag {file_tag}
 
     input:
         path index
         tuple val(file_tag), val(rg) , path(file1), path(file2)  
 	    
     output:
-        tuple val(file_tag), path "file_tag"
+        tuple val(file_tag), path("$file_tag")
     publishDir "${params.output_folder}/quantification", mode: "copy"
     
     script:
     """
-    salmon quant -i ${index} -l A --gcBias --validateMappings -1 ${file1} -2 ${file2} -p 2 -o ${file_tag}
+    salmon quant -i ${index} -l A --gcBias --validateMappings -1 ${file1} -2 ${file2} -p ${params.cpu} -o ${file_tag}
     """
 }
 
-
-process SUPPA2{
+process SUPPA2_preproc{
     cpus params.cpu
     memory params.mem+'GB'
     tag {file_tag}
 
     input:
-        tuple val(file_tag), path salmon_folder
+        path(suppa_folder)
+        tuple val(file_tag), path(salmon_folder)
 
     output:
-        path "*"
-    publishDir "${params.output_folder}/results", mode: "copy"
+        tuple val(file_tag), path("${file_tag}_iso_tpm.txt")
+    publishDir "${params.output_folder}/quantification", mode: "copy"
     
     script:
     """
-    python $projectDir/bin/suppa2_run.py $salmon_folder
+    ${suppa_folder}/suppa.py multipleFieldSelection.py -i ${salmon_folder}/quant.sf -k 1 -f 4 -o ${file_tag}_iso_tpm.txt
+    Rscript ${suppa_folder}/lib/format_Ensembl_ids.R ${file_tag}_iso_tpm.txt
+    """
+}
+
+process SUPPA2_ioefiles{
+    cpus params.cpu
+    memory params.mem+'GB'
+    tag {"IOEfilesgen"}
+
+    input:
+        path(suppa_folder)
+        path(gtf)
+    output:
+        path("events.ioe")
+        path("isoforms.ioi")
+    publishDir "${params.output_folder}/results", mode: "copy"
+
+    script:
+    """
+    #Generate the ioe files: 
+    python ${suppa_folder}/suppa.py generateEvents -i ${gtf} -o events -e SE SS MX RI FL -f ioe
+    #Put all the ioe events in the same file:
+    awk '
+        FNR==1 && NR!=1 { while (/^<header>/) getline; }
+        1 {print}
+    ' *.ioe > events.ioe
+
+    #Run SUPPA2 for obtaining the ioi file from the annotation
+    python ${suppa_folder}/suppa.py generateEvents -i ${gtf} -o isoforms -f ioi
+    """
+}
+
+process SUPPA2_event{
+    cpus params.cpu
+    memory params.mem+'GB'
+    tag {file_tag}
+
+    input:
+        path(ioe)
+        tuple val(file_tag), path(tpm_file)
+
+    output:
+        path("${file_tag}_events")
+    publishDir "${params.output_folder}/results/psiPerEvent", mode: "copy"
+    
+    script:
+    """
+    python ${suppa_folder}/suppa.py psiPerEvent -i ${ioe} -e ${tpm_file} -o ${file_tag}_events
+    """
+}
+
+process SUPPA2_isoform{
+    cpus params.cpu
+    memory params.mem+'GB'
+    tag {file_tag}
+
+    input:
+        path(gtf)
+        tuple val(file_tag), path(tpm_file)
+
+    output:
+        path("${file_tag}_events")
+    publishDir "${params.output_folder}/results/psiPerIsoform", mode: "copy"
+    
+    script:
+    """
+    python ${suppa_folder}/suppa.py psiPerIsoform -g ${gtf} -e ${tpm_file} -o ${file_tag}_isoform
     """
 }
 
 workflow{
     if(params.input_file){
-	bams = Channel.fromPath("${params.input_file}")
+	fastqs = Channel.fromPath("${params.input_file}")
      	          .splitCsv( header: true, sep: '\t', strip: true )
-	       .map { row -> [ row.ID , row.RG, file(row.input_folder+"*1.fastq.gz") , file(row.matrix_folder+"*2.fastq.gz") ] }
+	       .map { row -> [ row.ID , row.RG, file(row.pair1) , file(row.pair2) ] }
 	       .view()
     }else{
         fastqs     = Channel.fromFilePairs( params.fastq+'{*1.fastq.gz,*2.fastq.gz}' ).view()
     }
-    index     = file(params.index)
+
+    //load salmon index
+    index  = file(params.index)
     
+    //generate 
+    if(params.ioe==null){
+        print("Computing ioe file")
+        ioe = SUPPA2_ioefiles(params.suppa_folder,params.gtf)[0]
+    }else{
+        print("ioe file provided, skipping computing")
+        ioe = file(params.ioe)
+    }
+
+    //preprocess fastq files
     output_trim_ch = trim(fastqs)
-    output_quant_ch = quant(output_trim_ch,index)
-    SUPPA2(output_quant_ch[0])
+    output_quant_ch = quant(index,output_trim_ch[0])
+    //prepare files for suppa
+    SUPPA2_preproc(params.suppa_folder,output_quant_ch[0])
+    //run suppa
+    SUPPA2_event(ioe,SUPPA2_preproc.out)
+    SUPPA2_isoform(params.gtf,SUPPA2_preproc.out)
 }

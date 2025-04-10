@@ -138,7 +138,7 @@ process quant{
 	    
     output:
         tuple val(file_tag), path("$file_tag")
-    publishDir "${params.output_folder}/quantification", mode: "copy"
+    publishDir "${params.output_folder}/results/salmon", mode: "copy"
     
     script:
     """
@@ -157,7 +157,7 @@ process SUPPA2_preproc{
 
     output:
         tuple val(file_tag), path("${file_tag}_iso_tpm.txt")
-    publishDir "${params.output_folder}/quantification", mode: "copy"
+    //publishDir "${params.output_folder}/results", mode: "copy"
     
     script:
     """
@@ -206,7 +206,7 @@ process SUPPA2_event{
 
     output:
         path("${file_tag}_events.psi")
-    publishDir "${params.output_folder}/results/psiPerEvent", mode: "copy"
+    //publishDir "${params.output_folder}/results/psiPerEvent", mode: "copy"
     
     script:
     """
@@ -226,11 +226,67 @@ process SUPPA2_isoform{
 
     output:
         path("${file_tag}_isoform.psi")
-    publishDir "${params.output_folder}/results/psiPerIsoform", mode: "copy"
+    //publishDir "${params.output_folder}/results/psiPerIsoform", mode: "copy"
     
     script:
     """
     python ${suppa_folder}/suppa.py psiPerIsoform -g ${gtf} -e ${tpm_file} -o ${file_tag}
+    """
+}
+
+
+
+process joinTPMfiles{
+    cpus params.cpu
+    memory params.mem+'GB'
+    tag {"joinTPMfiles"}
+
+    input:
+        path(suppa_folder)
+        path(files)
+
+    output:
+        path("all_samples_*")
+    publishDir "${params.output_folder}/results", mode: "copy"
+    
+    """
+    python ${suppa_folder}/suppa.py joinFiles -f tpm -i ${files} -o all_samples_TPM 
+    """
+}
+
+process joinPsiEfiles{
+    cpus params.cpu
+    memory params.mem+'GB'
+    tag {"joinPsiEfiles"}
+
+    input:
+        path(suppa_folder)
+        path(files)
+
+    output:
+        path("all_samples_*")
+    publishDir "${params.output_folder}/results", mode: "copy"
+    
+    """
+    python ${suppa_folder}/suppa.py joinFiles -f psi -i ${files} -o all_samples_events
+    """
+}
+
+process joinPsiIfiles{
+    cpus params.cpu
+    memory params.mem+'GB'
+    tag {"joinPsiIfiles"}
+
+    input:
+        path(suppa_folder)
+        path(files)
+
+    output:
+        path("all_samples_*")
+    publishDir "${params.output_folder}/results", mode: "copy"
+    
+    """
+    python ${suppa_folder}/suppa.py joinFiles -f psi -i ${files} -o all_samples_isoforms
     """
 }
 
@@ -264,4 +320,10 @@ workflow{
     //run suppa
     SUPPA2_event(params.suppa_folder,ioe,SUPPA2_preproc.out)
     SUPPA2_isoform(params.suppa_folder,params.gtf,SUPPA2_preproc.out)
+
+    //join files
+    joinPsiEfiles(params.suppa_folder, SUPPA2_event.out.collect())
+    joinPsiIfiles(params.suppa_folder, SUPPA2_isoform.out.collect())
+    joinTPMfiles(params.suppa_folder, SUPPA2_preproc.out.map{row -> [row[1]]}.collect())
+
 }
